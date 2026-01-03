@@ -4,6 +4,8 @@ import dotenv from "dotenv";
 import sequelize from "./src/config/db.js";
 import authRoutes from "./src/routes/auth.routes.js";
 import { errorMiddleware } from "./src/middlewares/error.middleware.js";
+import tenantRoutes from "./src/routes/tenant.routes.js";
+
 
 dotenv.config();
 
@@ -26,6 +28,7 @@ app.get("/health", (req, res) => {
 
 // routes
 app.use("/api/auth", authRoutes);
+app.use("/api/tenants", tenantRoutes);
 
 // error handler
 app.use(errorMiddleware);

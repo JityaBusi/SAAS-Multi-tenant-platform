@@ -1,7 +1,10 @@
 import { hashPassword, comparePassword } from "../utils/password.util.js";
 import { generateToken } from "../utils/jwt.util.js";
-import db from "../db/index.js"; // your DB connection
+import db from "../db/index.js";
 
+/**
+ * Register Tenant + Admin
+ */
 export async function registerTenant(data) {
   const client = await db.connect();
 
@@ -10,7 +13,8 @@ export async function registerTenant(data) {
 
     const tenantRes = await client.query(
       `INSERT INTO tenants (name, subdomain)
-       VALUES ($1, $2) RETURNING id`,
+       VALUES ($1, $2)
+       RETURNING id`,
       [data.tenantName, data.subdomain]
     );
 
@@ -20,7 +24,7 @@ export async function registerTenant(data) {
     const userRes = await client.query(
       `INSERT INTO users (email, full_name, password_hash, role, tenant_id)
        VALUES ($1, $2, $3, 'tenant_admin', $4)
-       RETURNING id, email, full_name`,
+       RETURNING id, email, full_name, role`,
       [data.adminEmail, data.adminFullName, passwordHash, tenantId]
     );
 
@@ -38,9 +42,13 @@ export async function registerTenant(data) {
   }
 }
 
+/**
+ * Login User
+ */
 export async function loginUser(data) {
+  // 1️⃣ Fetch tenant (NO is_active)
   const tenantRes = await db.query(
-    "SELECT * FROM tenants WHERE subdomain = $1 AND is_active = true",
+    "SELECT id, subdomain FROM tenants WHERE subdomain = $1",
     [data.tenantSubdomain]
   );
 
@@ -50,8 +58,13 @@ export async function loginUser(data) {
 
   const tenant = tenantRes.rows[0];
 
+  // 2️⃣ Fetch user (NO is_active)
   const userRes = await db.query(
-    "SELECT * FROM users WHERE email = $1 AND tenant_id = $2 AND is_active = true",
+    `
+    SELECT id, email, password_hash, role, tenant_id
+    FROM users
+    WHERE email = $1 AND tenant_id = $2
+    `,
     [data.email, tenant.id]
   );
 
@@ -60,20 +73,27 @@ export async function loginUser(data) {
   }
 
   const user = userRes.rows[0];
-  const isMatch = await comparePassword(data.password, user.password_hash);
 
+  // 3️⃣ Password check
+  const isMatch = await comparePassword(data.password, user.password_hash);
   if (!isMatch) {
     throw { status: 401, message: "Invalid credentials" };
   }
 
+  // 4️⃣ Generate JWT
   const token = generateToken({
     userId: user.id,
-    tenantId: tenant.id,
+    tenantId: user.tenant_id,
     role: user.role
   });
 
   return {
-    user,
+    user: {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      tenantId: user.tenant_id
+    },
     token
   };
 }
